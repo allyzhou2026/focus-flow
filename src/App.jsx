@@ -4,8 +4,9 @@ import {
   ListTodo, Clock, X, BarChart3, ChevronLeft, ChevronRight, Settings2,
   GripHorizontal, Edit2, Trash2, CalendarDays, Menu,
   Wand2, FileText, ImagePlus, Loader2, UploadCloud, Columns,
-  Swords, Sparkles
+  Swords, Sparkles, RefreshCw
 } from 'lucide-react';
+import { supabase } from './supabase';
 
 // --- 实用函数 ---
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -53,9 +54,80 @@ const getEndOfWeek = (date) => {
 
 const SUBJECT_COLORS = ['#EF4444', '#F97316', '#F59E0B', '#10B981', '#3B82F6', '#6366F1', '#8B5CF6', '#EC4899'];
 
+// --- Supabase 数据同步函数 ---
+const loadFromSupabase = async (table) => {
+  try {
+    const { data, error } = await supabase.from(table).select('*').order('id')
+    if (error) throw error
+    // 转换字段名：snake_case -> camelCase
+    if (table === 'tasks') {
+      return (data || []).map(t => ({
+        id: t.id,
+        title: t.title,
+        subjectId: t.subject_id,
+        totalTime: t.total_time,
+        completed: t.completed,
+        createdAt: t.created_at,
+        targetDate: t.target_date
+      }))
+    }
+    if (table === 'sessions') {
+      return (data || []).map(s => ({
+        id: s.id,
+        taskId: s.task_id,
+        subjectId: s.subject_id,
+        duration: s.duration,
+        date: s.date
+      }))
+    }
+    return data || []
+  } catch (err) {
+    console.error(`Error loading ${table}:`, err)
+    return null
+  }
+}
+
+const saveToSupabase = async (table, data) => {
+  try {
+    // 先删除所有现有记录
+    await supabase.from(table).delete().neq('id', '')
+    // 转换字段名：camelCase -> snake_case
+    let formattedData = data
+    if (table === 'tasks') {
+      formattedData = data.map(t => ({
+        id: t.id,
+        title: t.title,
+        subject_id: t.subjectId,
+        total_time: t.totalTime,
+        completed: t.completed,
+        created_at: t.createdAt,
+        target_date: t.targetDate
+      }))
+    }
+    if (table === 'sessions') {
+      formattedData = data.map(s => ({
+        id: s.id,
+        task_id: s.taskId,
+        subject_id: s.subjectId,
+        duration: s.duration,
+        date: s.date
+      }))
+    }
+    // 再插入新数据
+    if (formattedData.length > 0) {
+      const { error } = await supabase.from(table).insert(formattedData)
+      if (error) throw error
+    }
+    return true
+  } catch (err) {
+    console.error(`Error saving ${table}:`, err)
+    return false
+  }
+}
+
 // --- 主应用组件 ---
 export default function App() {
-  // --- 状态管理 (包含 LocalStorage 缓存) ---
+  // --- 状态管理 (包含 LocalStorage 缓存 + Supabase 云端同步) ---
   const [subjects, setSubjects] = useState(() => JSON.parse(localStorage.getItem('focus_subjects')) || [
     { id: 's1', name: '语文', color: '#3B82F6' },
     { id: 's2', name: '数学', color: '#10B981' },
@@ -65,6 +137,8 @@ export default function App() {
   const [tasks, setTasks] = useState(() => JSON.parse(localStorage.getItem('focus_tasks')) || []);
   // sessions 结构: { id, taskId, subjectId, duration (秒), date (YYYY-MM-DD) }
   const [sessions, setSessions] = useState(() => JSON.parse(localStorage.getItem('focus_sessions')) || []);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
 
   const [activeTab, setActiveTab] = useState('board'); // 'board' | 'calendar'
 
@@ -78,10 +152,70 @@ export default function App() {
   // 计时器状态
   const [activeTimer, setActiveTimer] = useState(null); // { task, mode: 'countup'|'countdown', remaining, elapsed, isRunning }
 
-  // --- 数据持久化 ---
+  // --- 数据持久化 (本地 + 云端) ---
   useEffect(() => { localStorage.setItem('focus_subjects', JSON.stringify(subjects)); }, [subjects]);
   useEffect(() => { localStorage.setItem('focus_tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('focus_sessions', JSON.stringify(sessions)); }, [sessions]);
+
+  // --- 同步到云端 ---
+  const syncToCloud = async () => {
+    setIsSyncing(true);
+    try {
+      await Promise.all([
+        saveToSupabase('subjects', subjects),
+        saveToSupabase('tasks', tasks),
+        saveToSupabase('sessions', sessions)
+      ]);
+      setLastSyncTime(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error('Sync error:', err);
+    }
+    setIsSyncing(false);
+  };
+
+  // --- 从云端加载 ---
+  const loadFromCloud = async () => {
+    setIsSyncing(true);
+    try {
+      const [subjectsData, tasksData, sessionsData] = await Promise.all([
+        loadFromSupabase('subjects'),
+        loadFromSupabase('tasks'),
+        loadFromSupabase('sessions')
+      ]);
+
+      if (subjectsData && subjectsData.length > 0) {
+        setSubjects(subjectsData);
+        localStorage.setItem('focus_subjects', JSON.stringify(subjectsData));
+      }
+      if (tasksData && tasksData.length > 0) {
+        setTasks(tasksData);
+        localStorage.setItem('focus_tasks', JSON.stringify(tasksData));
+      }
+      if (sessionsData && sessionsData.length > 0) {
+        setSessions(sessionsData);
+        localStorage.setItem('focus_sessions', JSON.stringify(sessionsData));
+      }
+      setLastSyncTime(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error('Load error:', err);
+    }
+    setIsSyncing(false);
+  };
+
+  // 自动同步：当数据变化时延迟同步到云端
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (lastSyncTime !== null) {
+        syncToCloud();
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [subjects, tasks, sessions]);
+
+  // 初始加载
+  useEffect(() => {
+    loadFromCloud();
+  }, []);
 
   // --- 核心操作函数 ---
   const addSubject = (name, color) => {
@@ -161,13 +295,23 @@ export default function App() {
             <Clock className="w-8 h-8 flex-shrink-0" />
             <h1 className="text-xl font-bold tracking-tight truncate">Focus Flow</h1>
           </div>
-          <button
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className="text-gray-400 hover:text-indigo-600 transition-colors hidden md:block"
-            title={isSidebarCollapsed ? "展开菜单" : "收起菜单"}
-          >
-            <Menu className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={syncToCloud}
+              className="text-gray-400 hover:text-indigo-600 transition-colors hidden md:block"
+              title={lastSyncTime ? `上次同步: ${lastSyncTime}` : "同步到云端"}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="text-gray-400 hover:text-indigo-600 transition-colors hidden md:block"
+              title={isSidebarCollapsed ? "展开菜单" : "收起菜单"}
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         <button
