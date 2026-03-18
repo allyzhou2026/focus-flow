@@ -145,6 +145,9 @@ export default function App() {
   // 左侧边栏收起状态
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true); // 默认改为收起 (true)
 
+  // 庆祝动效状态
+  const [showCelebration, setShowCelebration] = useState(false);
+
   // 弹窗控制
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
   const [isBatchTaskModalOpen, setIsBatchTaskModalOpen] = useState(false);
@@ -266,8 +269,18 @@ export default function App() {
     }]);
   };
 
-  const toggleTaskCompletion = (taskId) => {
+  const toggleTaskCompletion = (taskId, targetDateStr) => {
+    const targetDate = targetDateStr || formatDate(new Date());
+    const targetTasks = tasks.filter(t => t.targetDate === targetDate);
+    const wasLastUncompleted = targetTasks.filter(t => !t.completed).length === 1;
+
     setTasks(tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t));
+
+    // 检测是否所有当日任务都已完成
+    if (wasLastUncompleted) {
+      setShowCelebration(true);
+      setTimeout(() => setShowCelebration(false), 3000);
+    }
   };
 
   const deleteTask = (taskId) => {
@@ -286,10 +299,23 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row font-sans text-gray-800">
+    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row font-sans text-gray-800 pb-16 md:pb-0">
 
-      {/* 侧边导航栏 */}
-      <nav className={`bg-white border-r border-gray-200 p-4 flex flex-col gap-2 shadow-sm z-10 transition-all duration-300 flex-shrink-0 ${isSidebarCollapsed ? 'md:w-20 items-center' : 'w-full md:w-64'}`}>
+      {/* 庆祝动效 */}
+      {showCelebration && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-12 shadow-2xl animate-in zoom-in-95 duration-500 text-center transform scale-100">
+            <div className="text-6xl mb-4 animate-bounce">🎉</div>
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-purple-500 to-pink-500 bg-clip-text text-transparent mb-2">
+              恭喜你
+            </h2>
+            <p className="text-xl text-gray-600">今日所有任务已完成！</p>
+          </div>
+        </div>
+      )}
+
+      {/* 电脑端侧边导航栏 */}
+      <nav className={`hidden md:flex bg-white border-r border-gray-200 p-4 flex-col gap-2 shadow-sm z-10 transition-all duration-300 flex-shrink-0 ${isSidebarCollapsed ? 'w-20 items-center' : 'w-64'}`}>
         <div className={`flex items-center px-2 py-4 mb-4 text-indigo-600 ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
           <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'hidden' : 'flex'}`}>
             <Clock className="w-8 h-8 flex-shrink-0" />
@@ -298,7 +324,7 @@ export default function App() {
           <div className="flex items-center gap-1">
             <button
               onClick={syncToCloud}
-              className="text-gray-400 hover:text-indigo-600 transition-colors hidden md:block"
+              className="text-gray-400 hover:text-indigo-600 transition-colors"
               title={lastSyncTime ? `上次同步: ${lastSyncTime}` : "同步到云端"}
               disabled={isSyncing}
             >
@@ -306,7 +332,7 @@ export default function App() {
             </button>
             <button
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="text-gray-400 hover:text-indigo-600 transition-colors hidden md:block"
+              className="text-gray-400 hover:text-indigo-600 transition-colors"
               title={isSidebarCollapsed ? "展开菜单" : "收起菜单"}
             >
               <Menu className="w-6 h-6" />
@@ -352,6 +378,50 @@ export default function App() {
         </div>
       </nav>
 
+      {/* 手机端底部导航栏 */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-2 flex justify-around items-center z-50 shadow-lg">
+        <button
+          onClick={() => setActiveTab('board')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-lg ${activeTab === 'board' ? 'text-indigo-600' : 'text-gray-500'}`}
+        >
+          <ListTodo className="w-5 h-5" />
+          <span className="text-xs font-medium">看板</span>
+        </button>
+        <button
+          onClick={syncToCloud}
+          className="flex flex-col items-center gap-1 p-2 text-gray-500"
+          title={lastSyncTime ? `上次同步: ${lastSyncTime}` : "同步"}
+          disabled={isSyncing}
+        >
+          <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
+          <span className="text-xs font-medium">{isSyncing ? '同步中' : '同步'}</span>
+        </button>
+        <button
+          onClick={() => setIsBatchTaskModalOpen(true)}
+          className="flex flex-col items-center gap-1 p-2 text-indigo-600"
+        >
+          <Plus className="w-5 h-5" />
+          <span className="text-xs font-medium">新建</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('stats')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-lg ${activeTab === 'stats' ? 'text-indigo-600' : 'text-gray-500'}`}
+        >
+          <BarChart3 className="w-5 h-5" />
+          <span className="text-xs font-medium">统计</span>
+        </button>
+      </nav>
+
+      {/* 手机端统计浮层 */}
+      {activeTab === 'stats' && (
+        <MobileStatsPanel
+          subjects={subjects}
+          sessions={sessions}
+          tasks={tasks}
+          onClose={() => setActiveTab('board')}
+        />
+      )}
+
       {/* 主内容区 */}
       <main className="flex-1 overflow-auto bg-gray-50/50 p-4 md:p-8 relative">
         {activeTab === 'board' ? (
@@ -390,7 +460,7 @@ export default function App() {
           }}
           onCompleteTask={(duration) => {
             if (duration > 0) saveSession(activeTimer.task.id, activeTimer.task.subjectId, duration);
-            toggleTaskCompletion(activeTimer.task.id);
+            toggleTaskCompletion(activeTimer.task.id, activeTimer.task.targetDate);
             setActiveTimer(null);
           }}
           subjectColor={subjects.find(s => s.id === activeTimer.task.subjectId)?.color || '#3B82F6'}
@@ -403,7 +473,11 @@ export default function App() {
 // --- 任务看板组件 ---
 function TaskBoard({ subjects, tasks, onAddTask, onToggleComplete, onStartTimer, onUpdateSubjectName, onReorderSubjects, onDeleteTask, onAddSingleTask }) {
   const [baseDate, setBaseDate] = useState(new Date()); // 用于控制日历导航的基准日期
-  const [columns, setColumns] = useState(2);
+  const [columns, setColumns] = useState(() => {
+    // 移动端默认1列，桌面端默认2列
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return 1;
+    return 2;
+  });
   const [draggedSubjectId, setDraggedSubjectId] = useState(null);
 
   const [editingSubjectId, setEditingSubjectId] = useState(null);
@@ -444,15 +518,17 @@ function TaskBoard({ subjects, tasks, onAddTask, onToggleComplete, onStartTimer,
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      {/* --- 固定在顶部的标题区域 --- */}
+      <div className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur-sm pt-3 pb-3 border-b border-gray-200/50">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
 
         {/* --- 视觉优化：打怪升级主题的头部 --- */}
         <div className="flex flex-col gap-1.5">
-          <h2 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-500 to-pink-500 flex items-center gap-2 drop-shadow-sm pb-1">
-            <Swords className="w-7 h-7 md:w-8 md:h-8 text-indigo-500 flex-shrink-0" />
+          <h2 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-500 to-pink-500 flex items-center gap-3 drop-shadow-sm">
+            <Swords className="w-10 h-10 md:w-12 md:h-12 text-indigo-500 flex-shrink-0" />
             勇者探险岛
           </h2>
-          <div className="text-xs md:text-sm font-bold text-indigo-700 flex items-center gap-1.5 bg-indigo-50 px-3 py-1.5 rounded-full w-fit border border-indigo-100 shadow-sm">
+          <div className="text-base md:text-lg font-bold text-indigo-700 flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-full w-fit border border-indigo-100 shadow-sm">
             <Sparkles className="w-4 h-4 text-amber-500" />
             冲吧小勇士！每消灭一个任务，就能赚取经验值变强哦！
           </div>
@@ -476,9 +552,10 @@ function TaskBoard({ subjects, tasks, onAddTask, onToggleComplete, onStartTimer,
             <span className="hidden md:inline">新建计划</span>
           </button>
         </div>
+        </div>
       </div>
 
-      <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : columns === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+      <div className={`grid gap-6 ${columns === 1 ? 'grid-cols-1' : columns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
         {subjects.map(subject => {
           const subjectTasks = filteredTasks.filter(t => t.subjectId === subject.id);
           const pendingTasks = subjectTasks.filter(t => !t.completed);
@@ -556,7 +633,7 @@ function TaskBoard({ subjects, tasks, onAddTask, onToggleComplete, onStartTimer,
                 {pendingTasks.map((task, index) => (
                   <div key={task.id} className="group flex items-start justify-between p-3 rounded-xl bg-gray-50 hover:bg-white border border-transparent hover:border-gray-200 hover:shadow-sm transition-all">
                     <div className="flex gap-3 items-start overflow-hidden">
-                      <button onClick={() => onToggleComplete(task.id)} className="mt-0.5 text-gray-300 hover:text-green-500 transition-colors flex-shrink-0">
+                      <button onClick={() => onToggleComplete(task.id, targetDateStr)} className="mt-0.5 text-gray-300 hover:text-green-500 transition-colors flex-shrink-0">
                         <CheckCircle className="w-5 h-5" />
                       </button>
                       <div className="flex flex-col justify-center min-h-[24px]">
@@ -594,7 +671,7 @@ function TaskBoard({ subjects, tasks, onAddTask, onToggleComplete, onStartTimer,
                     {completedTasks.map((task, index) => (
                       <div key={task.id} className="flex items-start justify-between p-3 rounded-xl opacity-60 bg-gray-50 mb-2">
                         <div className="flex gap-3 items-start overflow-hidden">
-                          <button onClick={() => onToggleComplete(task.id)} className="mt-0.5 text-green-500 flex-shrink-0">
+                          <button onClick={() => onToggleComplete(task.id, targetDateStr)} className="mt-0.5 text-green-500 flex-shrink-0">
                             <CheckCircle className="w-5 h-5 fill-current opacity-20" />
                           </button>
                           <div className="flex flex-col justify-center min-h-[24px]">
@@ -657,15 +734,15 @@ function TaskBoard({ subjects, tasks, onAddTask, onToggleComplete, onStartTimer,
         })}
       </div>
 
-      {/* 弱化的列数切换器，移至底部 */}
+      {/* 列数切换器 */}
       <div className="flex justify-center mt-6">
-        <div className="flex items-center gap-1 opacity-40 hover:opacity-100 transition-opacity">
-          <Columns className="w-4 h-4 text-gray-400 mx-1 hidden sm:block" />
+        <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm border border-gray-200 px-3 py-2">
+          <Columns className="w-4 h-4 text-gray-400" />
           {[1, 2, 3].map(c => (
             <button
               key={c}
               onClick={() => setColumns(c)}
-              className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded transition-colors ${columns === c ? 'bg-gray-300 text-gray-800' : 'text-gray-400 hover:bg-gray-200'}`}
+              className={`w-8 h-8 flex items-center justify-center text-sm font-medium rounded-lg transition-colors ${columns === c ? 'bg-indigo-100 text-indigo-600' : 'text-gray-400 hover:bg-gray-100'}`}
               title={`每行 ${c} 列`}
             >
               {c}
@@ -901,40 +978,30 @@ function CalendarBoard({ subjects, sessions, tasks }) {
         <div
           key={dateNum}
           onClick={() => setSelectedDateStr(dateStr)}
-          className={`p-2 min-h-[110px] border border-gray-100 rounded-lg bg-white shadow-sm flex flex-col transition-all hover:border-indigo-300 cursor-pointer ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : isToday ? 'bg-indigo-50/30' : ''}`}
+          className={`p-1 lg:p-2 min-h-[60px] lg:min-h-[110px] border border-gray-100 rounded bg-white shadow-sm flex flex-col transition-all hover:border-indigo-300 cursor-pointer ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1' : isToday ? 'bg-indigo-50/30' : ''}`}
         >
-          <div className={`text-xs font-bold mb-2 flex justify-between items-start ${isSelected ? 'text-indigo-600' : isToday ? 'text-indigo-500' : 'text-gray-400'}`}>
-            <span className="text-sm mt-0.5">{dateNum}</span>
-            <div className="flex flex-col items-end gap-1">
-              {daySessions.length > 0 && (
-                <span className="text-[10px] font-normal text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded flex items-center gap-1" title="专注时长">
-                  <Clock className="w-2.5 h-2.5" />
-                  {formatTime(daySessions.reduce((s,c)=>s+c.duration,0))}
-                </span>
-              )}
-              {totalCount > 0 && (
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center gap-1 ${completedCount === totalCount ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`} title="任务完成度">
-                  <CheckCircle className="w-2.5 h-2.5" />
-                  {completedCount}/{totalCount}
-                </span>
-              )}
-            </div>
+          <div className={`text-xs font-bold ${isSelected ? 'text-indigo-600' : isToday ? 'text-indigo-500' : 'text-gray-400'}`}>
+            {dateNum}
           </div>
-          <div className="flex-1 flex flex-col justify-end gap-1">
+          {/* 手机端只显示小圆点 */}
+          <div className="flex-1 flex flex-wrap items-end gap-0.5 mt-1">
             {Object.entries(dayStats).map(([subId, duration]) => {
               const sub = subjects.find(s => s.id === subId);
               if (!sub) return null;
-              // 简单计算一下高度占比，最高不超过一定高度
-              const heightStr = duration > 3600 ? '12px' : duration > 1800 ? '8px' : '4px';
               return (
                 <div
                   key={subId}
-                  className="w-full rounded-sm"
-                  style={{ backgroundColor: sub.color, height: heightStr, opacity: 0.8 }}
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ backgroundColor: sub.color }}
                   title={`${sub.name}: ${formatTime(duration)}`}
                 ></div>
               );
             })}
+            {totalCount > 0 && (
+              <span className={`text-[8px] lg:text-[10px] ${completedCount === totalCount ? 'text-green-600' : 'text-gray-500'}`}>
+                {completedCount}/{totalCount}
+              </span>
+            )}
           </div>
         </div>
       );
@@ -944,34 +1011,37 @@ function CalendarBoard({ subjects, sessions, tasks }) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-8">
+    <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-4 lg:gap-8">
       {/* 左侧日历 */}
       <div className="flex-1">
-        <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <CalendarIcon className="w-6 h-6 text-indigo-500" />
+        {/* 手机端：紧凑的月份导航 */}
+        <div className="flex justify-between items-center mb-3 lg:mb-6 bg-white p-3 lg:p-4 rounded-xl lg:rounded-2xl shadow-sm border border-gray-100">
+          <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-lg lg:text-xl font-bold text-gray-800">
             {year}年 {month + 1}月
           </h2>
-          <div className="flex gap-2">
-            <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600"><ChevronLeft className="w-5 h-5" /></button>
-            <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600"><ChevronRight className="w-5 h-5" /></button>
-          </div>
+          <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-          <div className="grid grid-cols-7 gap-2 mb-2">
+        {/* 手机端：紧凑日历格子 */}
+        <div className="bg-white p-3 lg:p-6 rounded-xl lg:rounded-3xl shadow-sm border border-gray-100">
+          <div className="grid grid-cols-7 gap-1 lg:gap-2 mb-2">
             {['一', '二', '三', '四', '五', '六', '日'].map(d => (
-              <div key={d} className="text-center text-xs font-bold text-gray-400 pb-2">{d}</div>
+              <div key={d} className="text-center text-xs font-bold text-gray-400 pb-1 lg:pb-2">{d}</div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1 lg:gap-2">
             {renderCalendarDays()}
           </div>
         </div>
       </div>
 
-      {/* 右侧统计面板 */}
-      <div className="w-full lg:w-80">
+      {/* 右侧统计面板 - 电脑端 */}
+      <div className="hidden lg:block w-full lg:w-80">
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sticky top-8">
 
           {/* 新增：统计维度切换 */}
@@ -1049,6 +1119,162 @@ function CalendarBoard({ subjects, sessions, tasks }) {
               ))
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- 手机端统计面板组件 ---
+function MobileStatsPanel({ subjects, sessions, tasks, onClose }) {
+  const today = new Date();
+  const [statView, setStatView] = useState('week'); // 默认显示周视图
+
+  // 按日期聚合 sessions
+  const sessionsByDate = sessions.reduce((acc, curr) => {
+    if (!acc[curr.date]) acc[curr.date] = [];
+    acc[curr.date].push(curr);
+    return acc;
+  }, {});
+
+  // 动态计算统计数据
+  let targetTasks = [];
+  let targetSessions = [];
+  let statTitle = '';
+
+  const getDateRange = (view) => {
+    const now = new Date();
+    if (view === 'day') {
+      return { start: formatDate(now), end: formatDate(now) };
+    } else if (view === 'week') {
+      return { start: formatDate(getStartOfWeek(now)), end: formatDate(getEndOfWeek(now)) };
+    } else if (view === 'month') {
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      return { start: monthStr + '-01', end: monthStr + '-31' };
+    }
+    return { start: '1970-01-01', end: '2099-12-31' };
+  };
+
+  const range = getDateRange(statView);
+
+  if (statView === 'day') {
+    targetTasks = tasks.filter(t => (t.targetDate || t.createdAt?.split('T')[0]) === range.start);
+    targetSessions = sessionsByDate[range.start] || [];
+    statTitle = range.start;
+  } else if (statView === 'week') {
+    targetTasks = tasks.filter(t => {
+      const d = t.targetDate || t.createdAt?.split('T')[0];
+      return d >= range.start && d <= range.end;
+    });
+    targetSessions = sessions.filter(s => s.date >= range.start && s.date <= range.end);
+    statTitle = `${range.start.slice(5)} ~ ${range.end.slice(5)}`;
+  } else if (statView === 'month') {
+    const monthStr = range.start.slice(0, 7);
+    targetTasks = tasks.filter(t => {
+      const d = t.targetDate || t.createdAt?.split('T')[0];
+      return d.startsWith(monthStr);
+    });
+    targetSessions = sessions.filter(s => s.date.startsWith(monthStr));
+    statTitle = `${today.getFullYear()}年${today.getMonth() + 1}月`;
+  } else if (statView === 'all') {
+    targetTasks = tasks;
+    targetSessions = sessions;
+    statTitle = '全部历史';
+  }
+
+  const totalPeriodTasks = targetTasks.length;
+  const completedPeriodTasks = targetTasks.filter(t => t.completed).length;
+
+  const statsBySubject = subjects.map(sub => {
+    const subSessions = targetSessions.filter(s => s.subjectId === sub.id);
+    const totalSecs = subSessions.reduce((sum, s) => sum + (s.duration || 0), 0);
+    return { ...sub, totalSecs };
+  }).filter(s => s.totalSecs > 0).sort((a, b) => b.totalSecs - a.totalSecs);
+
+  const totalPeriodSecs = statsBySubject.reduce((sum, s) => sum + s.totalSecs, 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+      <div className="bg-white w-full rounded-t-3xl p-6 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="font-bold text-xl text-gray-800 flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-indigo-600" />
+            数据统计
+          </h3>
+          <button onClick={onClose} className="p-2 bg-gray-100 rounded-full">
+            <X className="w-5 h-5 text-gray-600" />
+          </button>
+        </div>
+
+        {/* 时间维度切换 */}
+        <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
+          {[
+            { id: 'day', label: '今日' },
+            { id: 'week', label: '本周' },
+            { id: 'month', label: '本月' },
+            { id: 'all', label: '全部' }
+          ].map(v => (
+            <button
+              key={v.id}
+              onClick={() => setStatView(v.id)}
+              className={`flex-1 py-2.5 text-sm font-medium rounded-lg transition-all ${statView === v.id ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 核心数据展示 */}
+        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white mb-6">
+          <div className="text-center">
+            <div className="text-5xl font-black mb-1">{formatTime(totalPeriodSecs)}</div>
+            <div className="text-indigo-100 text-sm">总专注时长</div>
+          </div>
+        </div>
+
+        {/* 任务完成度 */}
+        <div className="flex gap-3 mb-6">
+          <div className="flex-1 bg-gray-50 p-4 rounded-xl text-center">
+            <div className="text-3xl font-bold text-gray-800">{totalPeriodTasks}</div>
+            <div className="text-xs text-gray-500">计划任务</div>
+          </div>
+          <div className="flex-1 bg-green-50 p-4 rounded-xl text-center">
+            <div className="text-3xl font-bold text-green-600">{completedPeriodTasks}</div>
+            <div className="text-xs text-green-600">已完成</div>
+          </div>
+          <div className="flex-1 bg-orange-50 p-4 rounded-xl text-center">
+            <div className="text-3xl font-bold text-orange-600">{totalPeriodTasks - completedPeriodTasks}</div>
+            <div className="text-xs text-orange-600">待完成</div>
+          </div>
+        </div>
+
+        {/* 各科目统计 */}
+        <div className="space-y-4">
+          <div className="text-sm font-bold text-gray-500 uppercase tracking-wider">各科目时长</div>
+          {statsBySubject.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">暂无专注记录</div>
+          ) : (
+            statsBySubject.map(stat => (
+              <div key={stat.id}>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-medium flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: stat.color }}></span>
+                    {stat.name}
+                  </span>
+                  <span className="font-mono text-gray-600 font-bold">{formatTime(stat.totalSecs)}</span>
+                </div>
+                <div className="w-full rounded-full h-3 bg-gray-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      backgroundColor: stat.color,
+                      width: totalPeriodSecs > 0 ? `${(stat.totalSecs / totalPeriodSecs) * 100}%` : '0%'
+                    }}
+                  ></div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -1146,69 +1372,70 @@ function BatchTaskModal({ subjects, onClose, onSave }) {
     });
   };
 
-  // 核心：调用 AI 识别
+  // 核心：调用 AI 识别（使用硅基流动免费API）
   const handleAnalyze = async (type) => {
     setErrorMsg('');
     setIsAnalyzing(true);
     try {
-      const apiKey = "";
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+      // 硅基流动免费API（需要申请key，这里用免费额度）
+      // 请在这里填入你的硅基流动API Key（免费申请：https://cloud.siliconflow.cn/）
+      const apiKey = "sk-fdyzbndoxvvtpixdqcpfuojhjxbakexdoqqxiovjlhcrwzwg";
+      const endpoint = "https://api.siliconflow.cn/v1/chat/completions";
 
       const subjectListStr = subjects.map(s => `ID: ${s.id}, Name: ${s.name}`).join('\n');
-      const systemPrompt = `你是一个任务提取助手。请从用户输入的文本或图片中提取出所有的学习/工作任务，并将它们分类到最合适的 Subject 中。\n\n当前可选的 Subject 列表如下：\n${subjectListStr}\n\n如果不确定，请将其分发到最接近的一个 Subject ID 中。必须返回 JSON 格式。`;
+      const systemPrompt = `你是一个任务提取助手。请从用户输入的文本或图片中提取出所有的学习/工作任务，并将它们分类到最合适的 Subject 中。\n\n当前可选的 Subject 列表如下：\n${subjectListStr}\n\n如果不确定，请将其分发到最接近的一个 Subject ID 中。必须返回如下JSON格式：{"tasks": [{"title": "任务标题", "subjectId": "学科ID"}]}`;
 
-      let parts = [];
+      let userMessage = "";
       if (type === 'text') {
         if (!aiText.trim()) {
           setErrorMsg("请输入要识别的文本");
           setIsAnalyzing(false);
           return;
         }
-        parts = [{ text: aiText }];
+        userMessage = "请从以下文本中提取任务：" + aiText;
       } else if (type === 'image') {
         if (!aiImage) {
           setErrorMsg("请先上传图片");
           setIsAnalyzing(false);
           return;
         }
-        const base64Data = aiImage.split(',')[1];
-        const mimeType = aiImage.split(';')[0].split(':')[1];
-        parts = [
-          { text: "请提取这张图片中提到的所有待办任务。" },
-          { inlineData: { mimeType: mimeType, data: base64Data } }
-        ];
+        userMessage = "请提取这张图片中提到的所有待办任务。";
       }
 
+      if (!apiKey) {
+        setErrorMsg("AI识别功能需要配置API Key。请在代码中填入硅基流动API Key（免费申请：https://cloud.siliconflow.cn/），或使用手动输入功能。");
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // 构建消息内容
+      const userContent = type === 'image' 
+        ? [
+            { type: "image_url", image_url: { url: aiImage } },
+            { type: "text", text: userMessage }
+          ]
+        : userMessage;
+
       const payload = {
-        contents: [{ parts: parts }],
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              tasks: {
-                type: "ARRAY",
-                items: {
-                  type: "OBJECT",
-                  properties: {
-                    title: { type: "STRING" },
-                    subjectId: { type: "STRING" }
-                  }
-                }
-              }
-            }
-          }
-        }
+        model: "Qwen/Qwen2-7B-Instruct",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent }
+        ],
+        max_tokens: 1024,
+        response_format: { type: "json_object" }
       };
 
       const data = await fetchWithRetry(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
         body: JSON.stringify(payload)
       });
 
-      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const textResponse = data.choices?.[0]?.message?.content;
       if (textResponse) {
         const parsed = JSON.parse(textResponse);
         if (parsed.tasks && parsed.tasks.length > 0) {
@@ -1388,7 +1615,7 @@ function BatchTaskModal({ subjects, onClose, onSave }) {
                 </div>
 
                 <div className="flex justify-end items-center pt-5 border-t border-gray-100 gap-4 mt-auto">
-                  <button type="button" onClick={onClose} className="px-6 py-3 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors font-medium">取消并丢弃</button>
+                  <button type="button" onClick={onClose} className="px-6 py-3 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors font-medium">取消</button>
                   <button type="submit" disabled={validCount === 0} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl disabled:opacity-50 transition-all font-medium shadow-md shadow-indigo-200 hover:shadow-lg active:scale-95 text-lg flex items-center gap-2">
                     保存今日计划
                     <span className="bg-white/20 text-white px-2 py-0.5 rounded-md text-sm">{validCount}</span>
