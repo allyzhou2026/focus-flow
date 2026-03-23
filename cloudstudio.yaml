@@ -1,0 +1,10 @@
+apps:
+  - name: 勇者探险岛
+    source:
+      kind: github
+      owner: allyzhou2026
+      repo: focus-flow
+    buildCommand: npm install && npm run build
+    outputDir: dist
+    port: 5173
+    framework: static
